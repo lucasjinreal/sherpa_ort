@@ -1,0 +1,3 @@
+[submodule "3rd/kaldiio"]
+	path = 3rd/kaldiio
+	url = https://github.com/jinfagang/kaldiio
