@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <vector>
 #include <iostream>
 #include <algorithm>
@@ -20,6 +21,8 @@ int main(int argc, char* argv[]) {
     char* token_path = argv[6];
     std::string search_method = argv[7];
     char* filename = argv[8];
+
+    printf("wav: %s search: %s \n", filename, search_method.c_str());
 
     // General parameters
     int numberOfThreads = 16;
