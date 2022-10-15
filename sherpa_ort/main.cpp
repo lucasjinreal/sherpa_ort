@@ -1,104 +1,129 @@
-#include <cstdio>
-#include <vector>
-#include <iostream>
-#include <algorithm>
-#include <time.h>
-#include <math.h>
-#include <fstream>
+/**
+ * Copyright (c)  2022  Xiaomi Corporation (authors: Fangjun Kuang)
+ *
+ * See LICENSE for clarification regarding multiple authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "fbank_features.h"
-#include "rnnt_beam_search.h"
+#include <iostream>
+#include <string>
+#include <vector>
 
 #include "fbank/online-feature.h"
+#include "decode.h"
+#include "rnnt-model.h"
+#include "symbol-table.h"
+#include "wave-reader.h"
 
+/** Compute fbank features of the input wave filename.
+ *
+ * @param wav_filename. Path to a mono wave file.
+ * @param expected_sampling_rate  Expected sampling rate of the input wave file.
+ * @param num_frames On return, it contains the number of feature frames.
+ * @return Return the computed feature of shape (num_frames, feature_dim)
+ *         stored in row-major.
+ */
+static std::vector<float> ComputeFeatures(const std::string &wav_filename,
+                                          float expected_sampling_rate,
+                                          int32_t *num_frames) {
+  std::vector<float> samples =
+      sherpa_onnx::ReadWave(wav_filename, expected_sampling_rate);
 
-int main(int argc, char* argv[]) {
-    char* encoder_path = argv[1];
-    char* decoder_path = argv[2];
-    char* joiner_path = argv[3];
-    char* joiner_encoder_proj_path = argv[4];
-    char* joiner_decoder_proj_path = argv[5];
-    char* token_path = argv[6];
-    std::string search_method = argv[7];
-    char* filename = argv[8];
+  float duration = samples.size() / expected_sampling_rate;
 
-    printf("wav: %s search: %s \n", filename, search_method.c_str());
+  std::cout << "wav filename: " << wav_filename << "\n";
+  std::cout << "wav duration (s): " << duration << "\n";
 
-    // General parameters
-    int numberOfThreads = 16;
+  knf::FbankOptions opts;
+  opts.frame_opts.dither = 0;
+  opts.frame_opts.snip_edges = false;
+  opts.frame_opts.samp_freq = expected_sampling_rate;
 
-    // Initialize fbanks
-    knf::FbankOptions opts;
-    opts.frame_opts.dither = 0;
-    opts.frame_opts.samp_freq = 16000;
-    opts.frame_opts.frame_shift_ms = 10.0f;
-    opts.frame_opts.frame_length_ms = 25.0f;
-    opts.mel_opts.num_bins = 80;
-    opts.frame_opts.window_type = "povey";
-    opts.frame_opts.snip_edges = false;
-    knf::OnlineFbank fbank(opts);
+  int32_t feature_dim = 80;
 
-    // set session opts
-    // https://onnxruntime.ai/docs/performance/tune-performance.html
-    session_options.SetIntraOpNumThreads(numberOfThreads);
-    session_options.SetInterOpNumThreads(numberOfThreads);
-    session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-    session_options.SetLogSeverityLevel(4);
-    session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
-    
-    api.CreateTensorRTProviderOptions(&tensorrt_options);
-    std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(tensorrt_options, api.ReleaseTensorRTProviderOptions);
-    api.SessionOptionsAppendExecutionProvider_TensorRT_V2(static_cast<OrtSessionOptions*>(session_options), rel_trt_options.get());
+  opts.mel_opts.num_bins = feature_dim;
 
-    // Define model
-    auto model = get_model(
-        encoder_path,
-        decoder_path,
-        joiner_path,
-        joiner_encoder_proj_path,
-        joiner_decoder_proj_path,
-        token_path
-    );
-    
-    std::vector<std::string> filename_list {
-        filename
-    };
+  knf::OnlineFbank fbank(opts);
+  fbank.AcceptWaveform(expected_sampling_rate, samples.data(), samples.size());
+  fbank.InputFinished();
 
-    for (auto filename : filename_list){
-        std::cout << filename << std::endl;
-        auto samples = readWav(filename, true);
-        int numSamples = samples.NumCols();
+  *num_frames = fbank.NumFramesReady();
 
-        auto features = ComputeFeatures(fbank, opts, samples);
+  std::vector<float> features(*num_frames * feature_dim);
+  float *p = features.data();
 
-        auto tic = std::chrono::high_resolution_clock::now();
+  for (int32_t i = 0; i != fbank.NumFramesReady(); ++i, p += feature_dim) {
+    const float *f = fbank.GetFrame(i);
+    std::copy(f, f + feature_dim, p);
+  }
 
-        // # === Encoder Out === #
-        int num_frames = features.size() / opts.mel_opts.num_bins;
-        auto encoder_out = model.encoder_forward(features,
-                                std::vector<int64_t> {num_frames},
-                                std::vector<int64_t> {1, num_frames, 80},
-                                std::vector<int64_t> {1},
-                                memory_info);
+  return features;
+}
 
-        // # === Search === #
-        std::vector<std::vector<int32_t>> hyps;
-        if (search_method == "greedy")
-            hyps = GreedySearch(&model, &encoder_out);
-        else{
-            std::cout << "wrong search method!" << std::endl;
-            exit(0);
-        }
-        auto results = hyps2result(model.tokens_map, hyps);
+int main(int32_t argc, char *argv[]) {
+  if (argc < 8 || argc > 9) {
+    const char *usage = R"usage(
+Usage:
+  ./bin/sherpa-onnx \
+    /path/to/tokens.txt \
+    /path/to/encoder.onnx \
+    /path/to/decoder.onnx \
+    /path/to/joiner.onnx \
+    /path/to/joiner_encoder_proj.onnx \
+    /path/to/joiner_decoder_proj.onnx \
+    /path/to/foo.wav [num_threads]
 
-        // # === Print Elapsed Time === #
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - tic);
-        std::cout << "Elapsed: " << float(elapsed.count()) / 1000 << " seconds" << std::endl;
-        std::cout << "rtf: " << float(elapsed.count()) / 1000 / (numSamples / 16000)  << std::endl;
-
-        print_hyps(hyps);
-        std::cout << results[0] << std::endl;
-    }
+You can download pre-trained models from the following repository:
+https://huggingface.co/csukuangfj/icefall-asr-librispeech-pruned-transducer-stateless3-2022-05-13
+)usage";
+    std::cerr << usage << "\n";
 
     return 0;
+  }
+
+  std::string tokens = argv[1];
+  std::string encoder = argv[2];
+  std::string decoder = argv[3];
+  std::string joiner = argv[4];
+  std::string joiner_encoder_proj = argv[5];
+  std::string joiner_decoder_proj = argv[6];
+  std::string wav_filename = argv[7];
+  int32_t num_threads = 4;
+  if (argc == 9) {
+    num_threads = atoi(argv[8]);
+  }
+
+  sherpa_onnx::SymbolTable sym(tokens);
+
+  int32_t num_frames;
+  auto features = ComputeFeatures(wav_filename, 16000, &num_frames);
+  int32_t feature_dim = features.size() / num_frames;
+
+  sherpa_onnx::RnntModel model(encoder, decoder, joiner, joiner_encoder_proj,
+                               joiner_decoder_proj, num_threads);
+  Ort::Value encoder_out =
+      model.RunEncoder(features.data(), num_frames, feature_dim);
+
+  auto hyp = sherpa_onnx::GreedySearch(model, encoder_out);
+
+  std::string text;
+  for (auto i : hyp) {
+    text += sym[i];
+  }
+
+  std::cout << "Recognition result for " << wav_filename << "\n"
+            << text << "\n";
+
+  return 0;
 }

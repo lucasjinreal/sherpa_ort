@@ -16,33 +16,25 @@
  * limitations under the License.
  */
 
-#include <iostream>
+#ifndef SHERPA_ONNX_CSRC_DECODE_H_
+#define SHERPA_ONNX_CSRC_DECODE_H_
 
-#include "fbank/online-feature.h"
+#include <vector>
 
-int main() {
-  knf::FbankOptions opts;
-  opts.frame_opts.dither = 0;
-  opts.mel_opts.num_bins = 10;
+#include "rnnt-model.h"
 
-  knf::OnlineFbank fbank(opts);
-  for (int32_t i = 0; i < 1600; ++i) {
-    float s = (i * i - i / 2) / 32767.;
-    fbank.AcceptWaveform(16000, &s, 1);
-  }
+namespace sherpa_onnx {
 
-  std::ostringstream os;
+/** Greedy search for non-streaming ASR.
+ *
+ * @TODO(fangjun) Support batch size > 1
+ *
+ * @param model  The RnntModel
+ * @param encoder_out  Its shape is (1, num_frames, encoder_out_dim).
+ */
+std::vector<int32_t> GreedySearch(RnntModel &model,  // NOLINT
+                                  const Ort::Value &encoder_out);
 
-  int32_t n = fbank.NumFramesReady();
-  for (int32_t i = 0; i != n; ++i) {
-    const float *frame = fbank.GetFrame(i);
-    for (int32_t k = 0; k != opts.mel_opts.num_bins; ++k) {
-      os << frame[k] << ", ";
-    }
-    os << "\n";
-  }
+}  // namespace sherpa_onnx
 
-  std::cout << os.str() << "\n";
-
-  return 0;
-}
+#endif  // SHERPA_ONNX_CSRC_DECODE_H_
