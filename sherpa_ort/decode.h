@@ -21,7 +21,7 @@
 
 #include <vector>
 
-#include "rnnt-model.h"
+#include "rnnt_model.h"
 
 namespace sherpa_onnx {
 
@@ -32,9 +32,9 @@ namespace sherpa_onnx {
  * @param model  The RnntModel
  * @param encoder_out  Its shape is (1, num_frames, encoder_out_dim).
  */
-std::vector<int32_t> GreedySearch(RnntModel &model,  // NOLINT
+std::vector<int32_t> GreedySearch(RnntModel &model, // NOLINT
                                   const Ort::Value &encoder_out);
 
-}  // namespace sherpa_onnx
+} // namespace sherpa_onnx
 
-#endif  // SHERPA_ONNX_CSRC_DECODE_H_
+#endif // SHERPA_ONNX_CSRC_DECODE_H_

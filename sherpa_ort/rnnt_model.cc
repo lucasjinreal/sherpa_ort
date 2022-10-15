@@ -15,8 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "rnnt-model.h"
-
+#include "rnnt_model.h"
 #include <array>
 #include <utility>
 #include <vector>

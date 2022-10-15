@@ -1,36 +1,18 @@
-/**
- * Copyright      2022  Xiaomi Corporation (authors: Fangjun Kuang)
- *
- * See LICENSE for clarification regarding multiple authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 
-#include "wave-reader.h"
+
+#ifndef SHERPA_ONNX_CSRC_WAVE_READER_H_
+#define SHERPA_ONNX_CSRC_WAVE_READER_H_
 
 #include <cassert>
 #include <fstream>
 #include <iostream>
+#include <istream>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace sherpa_onnx {
 
-namespace {
-// see http://soundfile.sapp.org/doc/WaveFormat/
-//
-// Note: We assume little endian here
-// TODO(fangjun): Support big endian
 struct WaveHeader {
   void Validate() const {
     //                       F F I R
@@ -39,12 +21,12 @@ struct WaveHeader {
     //                     E V A W
     assert(format == 0x45564157);
     assert(subchunk1_id == 0x20746d66);
-    assert(subchunk1_size == 16);  // 16 for PCM
-    assert(audio_format == 1);     // 1 for PCM
-    assert(num_channels == 1);     // we support only single channel for now
+    assert(subchunk1_size == 16); // 16 for PCM
+    assert(audio_format == 1);    // 1 for PCM
+    assert(num_channels == 1);    // we support only single channel for now
     assert(byte_rate == sample_rate * num_channels * bits_per_sample / 8);
     assert(block_align == num_channels * bits_per_sample / 8);
-    assert(bits_per_sample == 16);  // we support only 16 bits per sample
+    assert(bits_per_sample == 16); // we support only 16 bits per sample
   }
 
   int32_t chunk_id;
@@ -65,7 +47,7 @@ static_assert(sizeof(WaveHeader) == 44, "");
 
 // Read a wave file of mono-channel.
 // Return its samples normalized to the range [-1, 1).
-std::vector<float> ReadWaveImpl(std::istream &is, float *sample_rate) {
+inline std::vector<float> ReadWaveImpl(std::istream &is, float *sample_rate) {
   WaveHeader header;
   is.read(reinterpret_cast<char *>(&header), sizeof(header));
   assert(static_cast<bool>(is));
@@ -90,9 +72,7 @@ std::vector<float> ReadWaveImpl(std::istream &is, float *sample_rate) {
   return ans;
 }
 
-}  // namespace
-
-std::vector<float> ReadWave(const std::string &filename,
+inline std::vector<float> ReadWave(const std::string &filename,
                             float expected_sample_rate) {
   std::ifstream is(filename, std::ifstream::binary);
   float sample_rate;
@@ -105,4 +85,6 @@ std::vector<float> ReadWave(const std::string &filename,
   return samples;
 }
 
-}  // namespace sherpa_onnx
+} // namespace sherpa_onnx
+
+#endif // SHERPA_ONNX_CSRC_WAVE_READER_H_

@@ -1,39 +1,14 @@
-/**
- * Copyright (c)  2022  Xiaomi Corporation (authors: Fangjun Kuang)
- *
- * See LICENSE for clarification regarding multiple authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 
 #include <iostream>
 #include <string>
 #include <vector>
 
-#include "fbank/online-feature.h"
 #include "decode.h"
-#include "rnnt-model.h"
-#include "symbol-table.h"
-#include "wave-reader.h"
+#include "fbank/online-feature.h"
+#include "rnnt_model.h"
+#include "symbol_table.h"
+#include "wave_reader.h"
 
-/** Compute fbank features of the input wave filename.
- *
- * @param wav_filename. Path to a mono wave file.
- * @param expected_sampling_rate  Expected sampling rate of the input wave file.
- * @param num_frames On return, it contains the number of feature frames.
- * @return Return the computed feature of shape (num_frames, feature_dim)
- *         stored in row-major.
- */
 static std::vector<float> ComputeFeatures(const std::string &wav_filename,
                                           float expected_sampling_rate,
                                           int32_t *num_frames) {
